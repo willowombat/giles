@@ -1,0 +1,576 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#E4560F">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Field Plan Markup</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@500&display=swap">
+<style>
+*{box-sizing:border-box}
+:root{padding:env(safe-area-inset-top,0px) 0 env(safe-area-inset-bottom,0px)}
+body{margin:0}
+[hidden]{display:none!important}
+/* Layout: one-screen field tool. Plan sheet fills the screen, survey-tape orange marks the active tool, big touch targets for gloved hands. */
+:root{
+  --paper:#F7F8F6; --panel:#FFFFFF; --ink:#1B2430; --muted:#5D6875; --line:#D5DBD8;
+  --tape:#E4560F; --tape-ink:#FFFFFF; --sheet:#E6EAE7;
+  --pass:#1F7A44; --fail:#C02626; --pend:#6B7480; --obs:#2C5DA8;
+  --display:"Barlow Condensed","Arial Narrow",system-ui,sans-serif;
+  --body:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,Menlo,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --paper:#12171D; --panel:#1A2129; --ink:#E7ECEF; --muted:#9AA6B2; --line:#2E3842;
+  --tape:#F06A26; --tape-ink:#130A04; --sheet:#0C1015;
+  --pass:#46B276; --fail:#F0605E; --pend:#8A95A1; --obs:#6E9BE6; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --paper:#12171D; --panel:#1A2129; --ink:#E7ECEF; --muted:#9AA6B2; --line:#2E3842;
+  --tape:#F06A26; --tape-ink:#130A04; --sheet:#0C1015;
+  --pass:#46B276; --fail:#F0605E; --pend:#8A95A1; --obs:#6E9BE6; color-scheme:dark}
+html,body{height:100%}
+body{background:var(--paper);color:var(--ink);font-family:var(--body);font-size:15px;display:flex;flex-direction:column;overflow:hidden}
+button,input,select,textarea{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:3px solid var(--tape);outline-offset:2px}
+.bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:var(--panel);border-bottom:1px solid var(--line);
+  padding-block:10px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+.brand{font-family:var(--display);font-weight:700;font-size:22px;letter-spacing:.02em;text-transform:uppercase;line-height:1}
+.brand span{color:var(--tape)}
+.jobline{flex:1;min-width:0;color:var(--muted);font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.btn{min-height:44px;padding:0 14px;border-radius:8px;border:1px solid var(--line);background:var(--panel);display:inline-flex;align-items:center;gap:6px;font-weight:500}
+.btn:hover{border-color:var(--muted)}
+.btn.primary{background:var(--ink);color:var(--paper);border-color:var(--ink)}
+.btn.tape{background:var(--tape);color:var(--tape-ink);border-color:var(--tape);font-weight:600}
+.btn[aria-pressed="true"]{background:var(--tape);color:var(--tape-ink);border-color:var(--tape)}
+.btn:disabled{opacity:.45;cursor:default}
+.icon{min-width:44px;padding:0;justify-content:center;font-size:20px;font-weight:600}
+.main{flex:1;display:flex;min-height:0}
+.viewer{flex:1;min-width:0;overflow:auto;background:var(--sheet);position:relative;-webkit-overflow-scrolling:touch}
+.viewer.adding{cursor:crosshair}
+.stage{position:relative;margin:16px auto;box-shadow:0 2px 14px rgba(0,0,0,.18);background:#fff;width:max-content}
+.stage canvas{display:block}
+.overlay{position:absolute;inset:0}
+.mk{position:absolute;width:34px;height:34px;margin:-17px 0 0 -17px;border-radius:50%;border:3px solid #fff;color:#fff;
+  font-family:var(--mono);font-size:13px;font-weight:500;display:flex;align-items:center;justify-content:center;
+  box-shadow:0 1px 4px rgba(0,0,0,.45);padding:0;font-variant-numeric:tabular-nums}
+.mk.pass{background:var(--pass)}.mk.fail{background:var(--fail)}.mk.pending{background:var(--pend)}.mk.obs{background:var(--obs)}
+.mk.sel{outline:3px solid var(--tape);outline-offset:2px}
+.mk.example{border-style:dashed}
+.hint{position:sticky;top:10px;margin:0 auto;width:max-content;max-width:calc(100% - 32px);background:var(--tape);color:var(--tape-ink);
+  font-weight:600;padding:8px 14px;border-radius:999px;z-index:3;font-size:14px;text-align:center}
+.side{width:340px;border-left:1px solid var(--line);background:var(--panel);display:flex;flex-direction:column;min-height:0}
+.side h2{font-family:var(--display);font-size:18px;text-transform:uppercase;letter-spacing:.06em;margin:0;padding:14px 16px 8px;display:flex;justify-content:space-between;align-items:baseline}
+.side h2 small{font-family:var(--body);font-size:12px;color:var(--muted);letter-spacing:0;text-transform:none;font-weight:400}
+.list{overflow:auto;flex:1;padding:0 8px 12px}
+.row{display:grid;grid-template-columns:34px 1fr auto;gap:10px;align-items:center;padding:10px 8px;border-radius:8px;border:0;background:none;width:100%;text-align:left}
+.row:hover,.row.sel{background:var(--paper)}
+.row .mk{position:static;margin:0;width:30px;height:30px;font-size:12px;border-width:2px}
+.row .t{min-width:0}
+.row .t b{display:block;font-weight:600;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.row .t span{color:var(--muted);font-size:12.5px;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.row .r{font-family:var(--mono);font-size:13px;text-align:right;font-variant-numeric:tabular-nums}
+.chip{display:inline-block;font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;padding:2px 7px;border-radius:4px;color:#fff}
+.chip.pass{background:var(--pass)}.chip.fail{background:var(--fail)}.chip.pending{background:var(--pend)}.chip.obs{background:var(--obs)}
+.search{margin:0}
+.plist{display:flex;flex-direction:column;gap:2px;max-height:55vh;overflow:auto;margin:0 -6px}
+.pjob{font-family:var(--display);font-size:15px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);padding:12px 6px 4px}
+.pjob{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.savejob{border:1px solid var(--line);background:var(--panel);border-radius:6px;font-family:var(--body);font-size:12px;font-weight:600;letter-spacing:0;text-transform:none;color:var(--ink);min-height:34px;padding:0 10px}
+.savejob:disabled{opacity:.6}
+.off{font-style:normal;color:var(--pass);font-weight:600}
+.pitem{display:flex;justify-content:space-between;gap:10px;align-items:center;min-height:46px;padding:8px 10px;border:0;border-radius:8px;background:none;text-align:left;width:100%}
+.pitem:hover{background:var(--paper)}
+.pitem b{font-weight:500;min-width:0;overflow-wrap:anywhere}
+.pitem span{font-family:var(--mono);font-size:12px;color:var(--muted);white-space:nowrap}
+.pitem.cur b{color:var(--tape);font-weight:600}
+.empty{color:var(--muted);padding:16px;font-size:14px;line-height:1.5}
+.tools{display:flex;gap:8px;align-items:center;flex-wrap:wrap;background:var(--panel);border-top:1px solid var(--line);
+  padding-block:10px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+.tools .grow{flex:1}
+.pg{font-family:var(--mono);font-size:13px;color:var(--muted);min-width:56px;text-align:center}
+.listbtn{display:none}
+.scrim{position:fixed;inset:0;background:rgba(10,14,18,.45);z-index:20;display:flex;align-items:flex-end;justify-content:center}
+.sheet{background:var(--panel);width:100%;max-width:560px;max-height:88%;overflow:auto;border-radius:16px 16px 0 0;
+  padding:18px max(16px,env(safe-area-inset-right,0px)) calc(18px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px));display:flex;flex-direction:column;gap:14px}
+@media (min-width:700px){.scrim{align-items:center}.sheet{border-radius:16px;max-height:90%}}
+.sheet h3{font-family:var(--display);font-size:24px;margin:0;text-transform:uppercase;letter-spacing:.03em;display:flex;align-items:center;gap:10px;text-wrap:balance}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+label{display:flex;flex-direction:column;gap:5px;font-size:12px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);min-width:0}
+input,select,textarea{min-height:44px;border:1px solid var(--line);border-radius:8px;background:var(--paper);padding:8px 10px;font-size:16px;text-transform:none;letter-spacing:0;font-weight:400;color:var(--ink);width:100%;box-sizing:border-box}
+textarea{min-height:70px;resize:vertical}
+.num{font-family:var(--mono)}
+.actions{display:flex;gap:10px;flex-wrap:wrap;justify-content:space-between}
+.actions .right{display:flex;gap:10px;margin-left:auto}
+.note{font-size:13px;color:var(--muted);line-height:1.45;margin:0}
+.danger{color:var(--fail);border-color:var(--fail)}
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(84px + env(safe-area-inset-bottom,0px));background:var(--ink);color:var(--paper);
+  padding:10px 16px;border-radius:8px;z-index:30;font-size:14px;max-width:calc(100% - 32px)}
+.drawer{position:fixed;inset:0;z-index:15;background:rgba(10,14,18,.45);display:flex;justify-content:flex-end}
+.drawer .side{width:min(360px,92%);border-left:0;padding-top:env(safe-area-inset-top,0px)}
+input[type=file]{display:none}
+@media (max-width:820px){.main>.side{display:none}.listbtn{display:inline-flex}.jobline{display:none}}
+@media (max-width:480px){.btn .lbl{display:none}.brand{font-size:19px}}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+</head>
+<body>
+<header class="bar">
+  <div class="brand">Plan <span>Markup</span></div>
+  <div class="jobline" id="jobline"></div>
+  <button class="btn" id="jobBtn"><span aria-hidden="true">✎</span><span class="lbl">Job info</span></button>
+  <button class="btn primary" id="plansBtn"><span aria-hidden="true">▤</span><span class="lbl">Job plans</span></button>
+  <button class="btn" id="openBtn"><span aria-hidden="true">⇪</span><span class="lbl">From device</span></button>
+  <input type="file" id="file" accept="application/pdf,.pdf">
+</header>
+
+<div class="main">
+  <div class="viewer" id="viewer">
+    <div class="hint" id="hint" hidden>Tap the plan to place point #<span id="nextN">1</span></div>
+    <div class="stage" id="stage"><canvas id="cv"></canvas><div class="overlay" id="overlay"></div></div>
+  </div>
+  <aside class="side" id="side"></aside>
+</div>
+
+<nav class="tools">
+  <button class="btn icon" id="prevBtn" aria-label="Previous sheet">‹</button>
+  <span class="pg" id="pg">1 / 1</span>
+  <button class="btn icon" id="nextBtn" aria-label="Next sheet">›</button>
+  <button class="btn icon" id="zoutBtn" aria-label="Zoom out">−</button>
+  <button class="btn icon" id="zinBtn" aria-label="Zoom in">+</button>
+  <button class="btn" id="fitBtn">Fit</button>
+  <span class="grow"></span>
+  <button class="btn listbtn" id="listBtn">Points <b id="cnt">0</b></button>
+  <button class="btn" id="exportBtn"><span aria-hidden="true">⇩</span><span class="lbl">Export</span></button>
+  <button class="btn tape" id="addBtn" aria-pressed="false">+ Add point</button>
+</nav>
+
+<div id="modalRoot"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
+<script>
+(() => {
+const $ = id => document.getElementById(id);
+/* Plans folder: put PDFs in plans/ next to this page, one subfolder per job.
+   Owner/repo are worked out from the GitHub Pages address; set them here only if that fails. */
+const CONFIG = {owner:"", repo:"", branch:"", folder:"plans"};
+const TYPES = [
+  {v:"Nuclear density (D6938)", res:true, unit:"% RC"},
+  {v:"Sand cone (D1556)", res:true, unit:"% RC"},
+  {v:"Concrete sample (C172/C31)", res:false},
+  {v:"Footing / excavation obs.", res:false, obs:true},
+  {v:"Rebar / special inspection", res:false, obs:true},
+  {v:"Observation / note", res:false, obs:true}
+];
+const typeOf = v => TYPES.find(t=>t.v===v) || TYPES[TYPES.length-1];
+const today = () => new Date().toISOString().slice(0,10);
+
+let job = {project:"", jobNo:"", tech:"", date:today()};
+let points = [];
+let planName = "";
+let planBytes = null;
+let pdf = null, pageNum = 1, zoom = 1, viewport = null, renderTask = null;
+let adding = false, selId = null, lastType = TYPES[0].v;
+
+/* ---------- storage (per device) ---------- */
+const LS = "plan-markup-v1";
+let store = {};
+function saveLocal(){ try{ if(planName) store[planName] = points.filter(p=>!p.example); localStorage.setItem(LS, JSON.stringify({job, store, planName, lastType})); }catch(e){} }
+function loadLocal(){ try{ const s = JSON.parse(localStorage.getItem(LS)||"null"); if(s){ job = {...job, ...s.job}; planName = s.planName||""; lastType = s.lastType||lastType;
+  store = s.store || (s.points ? {[planName]: s.points} : {}); points = (store[planName]||[]).slice(); } }catch(e){} }
+async function switchPlan(name, bytes){
+  saveLocal();
+  pageNum = 1; await openPdf(bytes);
+  planBytes = bytes; planName = name; points = (store[name]||[]).slice(); selId = null;
+  await idbSet("plan",{name, bytes});
+  refresh();
+  const n = points.length; toast(n ? `Opened ${name.split("/").pop()} with ${n} saved point${n>1?"s":""}` : `Opened ${name.split("/").pop()}`);
+}
+function idb(){ return new Promise((res,rej)=>{ try{ const r = indexedDB.open("plan-markup",1); r.onupgradeneeded=()=>r.result.createObjectStore("f"); r.onsuccess=()=>res(r.result); r.onerror=()=>rej(r.error);}catch(e){rej(e)} }); }
+async function idbSet(k,v){ try{ const d=await idb(); await new Promise((res,rej)=>{const t=d.transaction("f","readwrite");t.objectStore("f").put(v,k);t.oncomplete=res;t.onerror=()=>rej(t.error);}); }catch(e){} }
+async function idbGet(k){ try{ const d=await idb(); return await new Promise((res,rej)=>{const r=d.transaction("f").objectStore("f").get(k);r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error);}); }catch(e){ return null; } }
+
+/* ---------- helpers ---------- */
+function status(p){
+  const t = typeOf(p.type);
+  if(t.obs) return "obs";
+  const r = parseFloat(p.result), s = parseFloat(p.spec);
+  if(t.res && isFinite(r) && isFinite(s)) return r >= s ? "pass" : "fail";
+  if(!t.res && p.result) return "pass";
+  return "pending";
+}
+const statusLabel = {pass:"Pass", fail:"Fail", pending:"Pending", obs:"Obs."};
+function esc(s){ return String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
+function toast(msg){ const t=document.createElement("div"); t.className="toast"; t.textContent=msg; document.body.appendChild(t); setTimeout(()=>t.remove(),2600); }
+function nextN(){ return points.reduce((m,p)=>Math.max(m,p.n),0)+1; }
+
+/* ---------- rendering ---------- */
+async function openPdf(bytes){
+  if(pdf){ try{ pdf.destroy(); }catch(e){} }
+  pdf = await pdfjsLib.getDocument({data: bytes.slice(), isEvalSupported:false}).promise;
+  pageNum = Math.min(pageNum, pdf.numPages) || 1;
+  zoom = 1;
+  await render();
+}
+async function render(){
+  if(!pdf) return;
+  const page = await pdf.getPage(pageNum);
+  const base = page.getViewport({scale:1});
+  const avail = Math.max(200, $("viewer").clientWidth - 32);
+  const fit = avail / base.width;
+  viewport = page.getViewport({scale: fit*zoom});
+  const cv = $("cv");
+  let dpr = window.devicePixelRatio||1;
+  const maxPx = 14e6;
+  if(viewport.width*viewport.height*dpr*dpr > maxPx) dpr = Math.sqrt(maxPx/(viewport.width*viewport.height));
+  cv.width = Math.floor(viewport.width*dpr); cv.height = Math.floor(viewport.height*dpr);
+  cv.style.width = viewport.width+"px"; cv.style.height = viewport.height+"px";
+  $("stage").style.width = viewport.width+"px";
+  if(renderTask){ try{ renderTask.cancel(); }catch(e){} }
+  renderTask = page.render({canvasContext: cv.getContext("2d"), viewport, transform: dpr!==1?[dpr,0,0,dpr,0,0]:null});
+  try{ await renderTask.promise; }catch(e){ if(e && e.name==="RenderingCancelledException") return; }
+  drawMarkers();
+  $("pg").textContent = `${pageNum} / ${pdf.numPages}`;
+  $("prevBtn").disabled = pageNum<=1; $("nextBtn").disabled = pageNum>=pdf.numPages;
+}
+function drawMarkers(){
+  const ov = $("overlay"); ov.innerHTML = "";
+  if(!viewport) return;
+  points.filter(p=>p.page===pageNum).forEach(p=>{
+    const [x,y] = viewport.convertToViewportPoint(p.px,p.py);
+    const b = document.createElement("button");
+    b.className = `mk ${status(p)}${p.id===selId?" sel":""}${p.example?" example":""}`;
+    b.style.left = x+"px"; b.style.top = y+"px"; b.textContent = p.n;
+    b.setAttribute("aria-label",`Point ${p.n}, ${p.type}`);
+    b.addEventListener("click", e=>{ e.stopPropagation(); edit(p.id); });
+    ov.appendChild(b);
+  });
+}
+function renderList(target){
+  const el = target || $("side");
+  const real = points.length;
+  el.innerHTML = `<h2>Test points <small>${real} on ${planName?esc(planName):"plan"}</small></h2><div class="list"></div>`;
+  const list = el.querySelector(".list");
+  if(!points.length){ list.innerHTML = `<p class="empty">No points yet. Tap <b>+ Add point</b>, then tap the plan where you ran the test.</p>`; }
+  [...points].sort((a,b)=>a.n-b.n).forEach(p=>{
+    const st = status(p), t = typeOf(p.type);
+    const b = document.createElement("button");
+    b.className = "row"+(p.id===selId?" sel":"");
+    b.innerHTML = `<span class="mk ${st}${p.example?" example":""}">${p.n}</span>
+      <span class="t"><b>${esc(p.loc||p.type)}</b><span>${esc(p.type)}${p.elev?" · "+esc(p.elev):""} · Sh ${p.page}${p.example?" · example":""}</span></span>
+      <span class="r">${t.res&&p.result?esc(p.result)+"%<br>":""}<span class="chip ${st}">${statusLabel[st]}</span></span>`;
+    b.addEventListener("click", async ()=>{ if(p.page!==pageNum){ pageNum=p.page; await render(); } selId=p.id; drawMarkers(); closeDrawer(); edit(p.id); });
+    list.appendChild(b);
+  });
+  $("cnt").textContent = points.length;
+}
+function refresh(){ drawMarkers(); renderList(); const d=document.querySelector(".drawer .side"); if(d) renderList(d); saveLocal(); $("nextN").textContent = nextN(); updateJobline(); }
+function updateJobline(){ const parts=[job.project, job.jobNo&&("Job "+job.jobNo), job.tech, job.date].filter(Boolean); $("jobline").textContent = parts.join(" · ") || "Add job info so exports are labeled"; }
+
+/* ---------- interactions ---------- */
+function setAdding(on){ adding=on; $("addBtn").setAttribute("aria-pressed",on); $("addBtn").textContent = on?"Done placing":"+ Add point"; $("hint").hidden=!on; $("viewer").classList.toggle("adding",on); }
+$("addBtn").onclick = ()=> setAdding(!adding);
+$("overlay").addEventListener("click", e=>{
+  if(!adding || !viewport) return;
+  const r = $("overlay").getBoundingClientRect();
+  const [px,py] = viewport.convertToPdfPoint(e.clientX-r.left, e.clientY-r.top);
+  const p = {id: Date.now().toString(36)+Math.random().toString(36).slice(2,6), n: nextN(), page: pageNum, px, py,
+    type: lastType, loc:"", elev:"", result:"", spec: typeOf(lastType).res?"90":"", notes:"", time: new Date().toISOString()};
+  points.push(p); selId = p.id; refresh(); edit(p.id, true);
+});
+$("prevBtn").onclick = async()=>{ if(pageNum>1){ pageNum--; await render(); } };
+$("nextBtn").onclick = async()=>{ if(pdf && pageNum<pdf.numPages){ pageNum++; await render(); } };
+$("zinBtn").onclick = ()=>{ zoom=Math.min(zoom*1.4, 8); render(); };
+$("zoutBtn").onclick = ()=>{ zoom=Math.max(zoom/1.4, 0.4); render(); };
+$("fitBtn").onclick = ()=>{ zoom=1; render(); };
+let rz; addEventListener("resize", ()=>{ clearTimeout(rz); rz=setTimeout(render,200); });
+
+function modal(html){ const root=$("modalRoot"); root.innerHTML = `<div class="scrim"><div class="sheet" role="dialog" aria-modal="true">${html}</div></div>`;
+  const scrim = root.querySelector(".scrim"); scrim.addEventListener("click", e=>{ if(e.target===scrim) closeModal(); }); return root.querySelector(".sheet"); }
+function closeModal(){ $("modalRoot").innerHTML=""; }
+addEventListener("keydown", e=>{ if(e.key==="Escape"){ closeModal(); closeDrawer(); if(adding) setAdding(false);} });
+
+function edit(id, isNew){
+  const p = points.find(x=>x.id===id); if(!p) return;
+  selId = id; drawMarkers();
+  const t = typeOf(p.type);
+  const s = modal(`
+    <h3><span class="mk ${status(p)}" style="position:static;margin:0">${p.n}</span>Point ${p.n} <span class="chip ${status(p)}" id="stChip">${statusLabel[status(p)]}</span></h3>
+    ${p.example?'<p class="note">This is an example point on the sample plan.</p>':""}
+    <label>Test type<select id="f_type">${TYPES.map(o=>`<option ${o.v===p.type?"selected":""}>${esc(o.v)}</option>`).join("")}</select></label>
+    <label>Location / description<input id="f_loc" value="${esc(p.loc)}" placeholder="e.g. Bldg pad, NE corner, 15 ft W of grid C"></label>
+    <div class="grid2">
+      <label>Elevation / depth<input id="f_elev" value="${esc(p.elev)}" placeholder="e.g. FG −1.0 ft"></label>
+      <label id="resWrap">${t.res?"Rel. compaction %":"Result / set no."}<input id="f_result" class="num" inputmode="decimal" value="${esc(p.result)}"></label>
+    </div>
+    <div class="grid2" id="specRow" ${t.res?"":"hidden"}>
+      <label>Required %<input id="f_spec" class="num" inputmode="decimal" value="${esc(p.spec)}"></label>
+      <label>Time<input value="${new Date(p.time).toLocaleString([], {month:"short",day:"numeric",hour:"numeric",minute:"2-digit"})}" disabled></label>
+    </div>
+    <label>Notes<textarea id="f_notes" placeholder="Moisture, retest of #, conditions…">${esc(p.notes)}</textarea></label>
+    <div class="actions">
+      <button class="btn danger" id="delBtn">Delete</button>
+      <div class="right"><button class="btn primary" id="doneBtn">Save point</button></div>
+    </div>`);
+  const read = ()=>{ p.type=$("f_type").value; p.loc=$("f_loc").value.trim(); p.elev=$("f_elev").value.trim(); p.result=$("f_result").value.trim();
+    p.spec=$("f_spec").value.trim(); p.notes=$("f_notes").value.trim(); lastType=p.type; };
+  const live = ()=>{ read(); const st=status(p); const c=$("stChip"); c.className="chip "+st; c.textContent=statusLabel[st]; };
+  s.addEventListener("input", live);
+  $("f_type").addEventListener("change", ()=>{ const nt=typeOf($("f_type").value); $("specRow").hidden=!nt.res;
+    $("resWrap").firstChild.textContent = nt.res?"Rel. compaction %":"Result / set no."; if(nt.res && !$("f_spec").value) $("f_spec").value="90"; live(); });
+  $("doneBtn").onclick = ()=>{ read(); closeModal(); refresh(); if(isNew) toast(`Point ${p.n} saved. Tap the plan for the next one.`); };
+  let armed=false;
+  $("delBtn").onclick = ()=>{ if(!armed){ armed=true; $("delBtn").textContent="Tap again to delete"; setTimeout(()=>{ armed=false; const b=$("delBtn"); if(b) b.textContent="Delete"; },3000); return; }
+    points = points.filter(x=>x.id!==id); selId=null; closeModal(); refresh(); toast(`Point ${p.n} deleted`); };
+  if(isNew) setTimeout(()=>$("f_loc").focus(),50);
+}
+
+$("jobBtn").onclick = ()=>{
+  modal(`<h3>Job info</h3>
+    <p class="note">Printed on the exported plan and test log.</p>
+    <label>Project<input id="j_p" value="${esc(job.project)}" placeholder="e.g. Taft Ave Warehouse"></label>
+    <div class="grid2"><label>Job no.<input id="j_n" value="${esc(job.jobNo)}"></label><label>Date<input id="j_d" type="date" value="${esc(job.date)}"></label></div>
+    <label>Technician<input id="j_t" value="${esc(job.tech)}"></label>
+    <div class="actions"><span></span><div class="right"><button class="btn primary" id="j_save">Save</button></div></div>`);
+  $("j_save").onclick = ()=>{ job={project:$("j_p").value.trim(), jobNo:$("j_n").value.trim(), date:$("j_d").value, tech:$("j_t").value.trim()}; closeModal(); refresh(); };
+};
+
+$("openBtn").onclick = ()=> $("file").click();
+$("file").addEventListener("change", async e=>{
+  const f = e.target.files[0]; e.target.value=""; if(!f) return;
+  try{
+    const bytes = new Uint8Array(await f.arrayBuffer());
+    await switchPlan(f.name, bytes);
+  }catch(err){ toast("That file couldn't be opened as a PDF. Try exporting it again as a PDF."); }
+});
+
+/* list drawer on phones */
+$("listBtn").onclick = ()=>{ const d=document.createElement("div"); d.className="drawer"; d.innerHTML=`<aside class="side"></aside>`;
+  d.addEventListener("click", e=>{ if(e.target===d) closeDrawer(); }); document.body.appendChild(d); renderList(d.querySelector(".side")); };
+function closeDrawer(){ document.querySelectorAll(".drawer").forEach(d=>d.remove()); }
+
+/* ---------- export ---------- */
+const ascii = s => String(s??"").replace(/[−–—]/g,"-").replace(/[‘’]/g,"'").replace(/[“”]/g,'"').replace(/[^\x20-\x7E]/g,"");
+function baseName(){ return (ascii(job.jobNo||job.project||planName.replace(/\.pdf$/i,"")||"plan").replace(/[^\w.-]+/g,"_").slice(0,60) || "plan") + "_" + (job.date||today()); }
+function csv(){
+  const head = ["Point","Sheet","Test type","Location","Elevation","Result","Required","Status","Notes","Time","Project","Job no","Technician"];
+  const q = v => { v=String(v??""); return /[",\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v; };
+  const rows = [...points].sort((a,b)=>a.n-b.n).map(p=>[p.n,p.page,p.type,p.loc,p.elev,p.result,typeOf(p.type).res?p.spec:"",statusLabel[status(p)],p.notes,new Date(p.time).toLocaleString(),job.project,job.jobNo,job.tech]);
+  return [head,...rows].map(r=>r.map(q).join(",")).join("\r\n");
+}
+async function markedPdf(){
+  const {PDFDocument, StandardFonts, rgb} = PDFLib;
+  const doc = await PDFDocument.load(planBytes.slice(), {ignoreEncryption:true});
+  const bold = await doc.embedFont(StandardFonts.HelveticaBold), reg = await doc.embedFont(StandardFonts.Helvetica);
+  const col = {pass:rgb(.12,.48,.27), fail:rgb(.75,.15,.15), pending:rgb(.42,.45,.5), obs:rgb(.17,.36,.66)};
+  points.forEach(p=>{
+    const pg = doc.getPage(p.page-1); if(!pg) return;
+    const {width,height} = pg.getSize(); const r = Math.max(7, Math.max(width,height)*0.008);
+    pg.drawCircle({x:p.px, y:p.py, size:r, color:col[status(p)], borderColor:rgb(1,1,1), borderWidth:r*0.18});
+    const label = String(p.n), fs = r*(label.length>2?0.8:1.05), tw = bold.widthOfTextAtSize(label,fs);
+    pg.drawText(label,{x:p.px-tw/2, y:p.py-fs*0.36, size:fs, font:bold, color:rgb(1,1,1)});
+  });
+  // test log pages
+  const W=792,H=612,M=36, cols=[["#",28],["Sh",26],["Test type",150],["Location",190],["Elev.",70],["Result",52],["Req.",40],["Status",56],["Notes",112]];
+  const rows=[...points].sort((a,b)=>a.n-b.n); const per=24; const pages=Math.max(1,Math.ceil(rows.length/per));
+  const fit=(t,w,f,s)=>{ t=ascii(t); while(t && f.widthOfTextAtSize(t,s)>w-6) t=t.slice(0,-1); return t; };
+  for(let i=0;i<pages;i++){
+    const pg=doc.addPage([W,H]); let y=H-M;
+    pg.drawText("TEST LOCATION LOG",{x:M,y:y-14,size:16,font:bold});
+    pg.drawText(fit([job.project, job.jobNo&&("Job "+job.jobNo), job.tech, job.date].filter(Boolean).join("   |   "),W-2*M-60,reg,10),{x:M,y:y-30,size:10,font:reg});
+    pg.drawText(`Page ${i+1} of ${pages}`,{x:W-M-60,y:y-14,size:9,font:reg});
+    y-=52; let x=M;
+    pg.drawRectangle({x:M,y:y-4,width:W-2*M,height:18,color:rgb(.9,.91,.9)});
+    cols.forEach(([h,w])=>{ pg.drawText(h,{x:x+3,y:y+1,size:9,font:bold}); x+=w; });
+    y-=20;
+    rows.slice(i*per,(i+1)*per).forEach(p=>{
+      const t=typeOf(p.type), st=status(p);
+      const vals=[p.n,p.page,p.type,p.loc,p.elev,t.res&&p.result?p.result+"%":(p.result||""),t.res&&p.spec?p.spec+"%":"",statusLabel[st].toUpperCase(),p.notes];
+      x=M; vals.forEach((v,j)=>{ const w=cols[j][1]; pg.drawText(fit(v,w,j===7?bold:reg,9),{x:x+3,y,size:9,font:j===7?bold:reg,color:j===7?col[st]:rgb(0,0,0)}); x+=w; });
+      pg.drawLine({start:{x:M,y:y-6},end:{x:W-M,y:y-6},thickness:.4,color:rgb(.8,.82,.81)}); y-=19;
+    });
+  }
+  return await doc.save();
+}
+function save(filename, data){
+  try{
+    const blob = data instanceof Blob ? data : new Blob([data], {type: filename.endsWith(".csv") ? "text/csv" : "application/octet-stream"});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a"); a.href = url; a.download = filename;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(()=>URL.revokeObjectURL(url), 4000);
+    toast("Saved "+filename); return true;
+  }catch(e){ toast("The file couldn't be saved on this device."); return false; }
+}
+function exportDialog(){
+  const n = points.length;
+  modal(`<h3>Export</h3>
+    <p class="note">${n} point${n===1?"":"s"} on ${esc(planName||"the plan")}. The marked PDF adds the numbered points to the plan sheets and a test log page at the end.</p>
+    <button class="btn tape" id="x_pdf" ${n?"":"disabled"}>Marked plan + test log (PDF)</button>
+    <button class="btn" id="x_csv" ${n?"":"disabled"}>Test points (CSV for the report)</button>
+    <button class="btn" id="x_copy" ${n?"":"disabled"}>Copy CSV text</button>
+    <div class="actions"><span></span><div class="right"><button class="btn" id="x_close">Close</button></div></div>`);
+  $("x_close").onclick = closeModal;
+  $("x_pdf").onclick = async ()=>{ $("x_pdf").disabled=true; $("x_pdf").textContent="Building PDF…";
+    try{ const bytes = await markedPdf(); await save(baseName()+"_marked.pdf", new Blob([bytes],{type:"application/pdf"})); }
+    catch(e){ toast("The PDF couldn't be built. The original plan may be protected."); }
+    const b=$("x_pdf"); if(b){ b.disabled=false; b.textContent="Marked plan + test log (PDF)"; } };
+  $("x_csv").onclick = ()=> save(baseName()+"_points.csv", csv());
+  $("x_copy").onclick = async ()=>{ const text=csv(); try{ await navigator.clipboard.writeText(text); toast("CSV copied"); }
+    catch(e){ const s=$("modalRoot").querySelector(".sheet"); const ta=document.createElement("textarea"); ta.value=text; ta.rows=6; s.appendChild(ta); ta.select(); toast("Select all and copy the text below"); } };
+}
+$("exportBtn").onclick = exportDialog;
+
+/* ---------- sample plan ---------- */
+async function samplePlan(){
+  const {PDFDocument, StandardFonts, rgb} = PDFLib;
+  const d = await PDFDocument.create(); const pg = d.addPage([1224,792]);
+  const f = await d.embedFont(StandardFonts.Helvetica), b = await d.embedFont(StandardFonts.HelveticaBold);
+  const g = rgb(.55,.58,.6), k = rgb(.15,.17,.2);
+  pg.drawRectangle({x:24,y:24,width:1176,height:744,borderColor:k,borderWidth:1.5});
+  pg.drawRectangle({x:960,y:24,width:240,height:744,borderColor:k,borderWidth:1});
+  pg.drawText("SAMPLE PLAN",{x:978,y:730,size:18,font:b,color:rgb(.85,.33,.06)});
+  pg.drawText("Open your own plan PDF to start",{x:978,y:712,size:10,font:f,color:k});
+  [["PROJECT","Example Industrial Bldg"],["SHEET","C-2  Rough Grading Plan"],["SCALE",'1" = 40\''],["PAD ELEV.","FF 112.50  /  PAD 111.80"]].forEach(([a,v],i)=>{
+    pg.drawText(a,{x:978,y:640-i*44,size:8,font:b,color:g}); pg.drawText(v,{x:978,y:626-i*44,size:11,font:f,color:k}); });
+  for(let i=0;i<8;i++){ const x=110+i*110; pg.drawLine({start:{x,y:70},end:{x,y:730},thickness:.4,color:g,dashArray:[6,4]}); pg.drawText(String.fromCharCode(65+i),{x:x-4,y:740,size:11,font:b,color:g}); }
+  for(let j=0;j<6;j++){ const y=120+j*110; pg.drawLine({start:{x:60,y},end:{x:930,y},thickness:.4,color:g,dashArray:[6,4]}); pg.drawText(String(j+1),{x:44,y:y-4,size:11,font:b,color:g}); }
+  pg.drawRectangle({x:220,y:230,width:550,height:330,borderColor:k,borderWidth:2.2});
+  pg.drawText("PROPOSED BUILDING",{x:400,y:400,size:16,font:b,color:k});
+  pg.drawText("PAD 111.80",{x:446,y:380,size:11,font:f,color:k});
+  for(let c=0;c<5;c++){ const off=c*26; pg.drawRectangle({x:150-off,y:160-off,width:690+off*2,height:470+off*2,borderColor:rgb(.6,.5,.35),borderWidth:.6}); pg.drawText(String(111-c),{x:146-off,y:170-off+235,size:8,font:f,color:rgb(.6,.5,.35)}); }
+  pg.drawText("RETAINING WALL",{x:820,y:600,size:9,font:b,color:k}); pg.drawLine({start:{x:800,y:200},end:{x:800,y:640},thickness:3,color:k});
+  pg.drawText("N",{x:905,y:700,size:14,font:b,color:k}); pg.drawLine({start:{x:910,y:640},end:{x:910,y:692},thickness:2,color:k});
+  return await d.save();
+}
+function examplePoints(){
+  const mk=(n,px,py,type,loc,elev,result,spec,notes)=>({id:"ex"+n,n,page:1,px,py,type,loc,elev,result,spec,notes,time:new Date().toISOString(),example:true});
+  return [
+    mk(1,300,470,"Nuclear density (D6938)","Bldg pad, NW quadrant","FG -1.0 ft","93.4","90","Moisture 11.2%"),
+    mk(2,610,300,"Nuclear density (D6938)","Bldg pad, SE quadrant","FG -1.0 ft","87.9","90","Retest after rework"),
+    mk(3,810,420,"Footing / excavation obs.","Retaining wall footing, grid G/3","Bottom of ftg","","","Firm native, approved")
+  ];
+}
+
+/* ---------- job plans from the repo ---------- */
+function repoInfo(){
+  let {owner, repo, branch} = CONFIG; let base = "";
+  const host = location.hostname, parts = location.pathname.split("/").filter(Boolean);
+  if(parts.length && /\.[a-z0-9]+$/i.test(parts[parts.length-1])) parts.pop();
+  if(!owner && host.endsWith(".github.io")) owner = host.replace(".github.io","");
+  if(!repo && owner){
+    if(parts.length && parts[0].toLowerCase() !== host.toLowerCase()){
+      // project site: owner.github.io/repo/... unless the user site holds this folder
+      repo = parts[0]; base = parts.slice(1).join("/");
+    } else { repo = host; base = parts.join("/"); }
+  }
+  const folder = (base ? base+"/" : "") + CONFIG.folder.replace(/^\/|\/$/g,"") + "/";
+  return {owner, repo, branch, folder};
+}
+let planCache = null;
+async function listPlans(force){
+  if(planCache && !force) return planCache;
+  try{ const fresh = await fetchPlanList(); planOffline = false;
+    try{ localStorage.setItem("pm-planlist", JSON.stringify(fresh)); }catch(e){}
+    return planCache = fresh;
+  }catch(err){
+    let saved = null; try{ saved = JSON.parse(localStorage.getItem("pm-planlist")||"null"); }catch(e){}
+    if(saved){ planOffline = true; return planCache = saved; }
+    throw navigator.onLine===false ? new Error("offline") : err;
+  }
+}
+let planOffline = false;
+async function fetchPlanList(){
+  const local = `${CONFIG.folder}/`;
+  try{ // optional hand-made list: plans/index.json = ["Job 101/C-2.pdf", ...]
+    const r = await fetch(local+"index.json", {cache:"no-store"});
+    if(r.ok){ const arr = await r.json(); if(Array.isArray(arr)) return arr.map(p=>({path:p, size:0})); }
+  }catch(e){}
+  const {owner, repo, branch, folder} = repoInfo();
+  if(!owner || !repo) throw new Error("config");
+  const api = `https://api.github.com/repos/${owner}/${repo}`;
+  let br = branch;
+  if(!br){ const r = await fetch(api); if(!r.ok) throw new Error(r.status===403?"rate":"repo"); br = (await r.json()).default_branch; }
+  const t = await fetch(`${api}/git/trees/${encodeURIComponent(br)}?recursive=1`);
+  if(!t.ok) throw new Error(t.status===403?"rate":"repo");
+  const tree = (await t.json()).tree || [];
+  return tree.filter(n=>n.type==="blob" && n.path.startsWith(folder) && /\.pdf$/i.test(n.path))
+    .map(n=>({path: n.path.slice(folder.length), size: n.size||0, sha: n.sha}))
+    .sort((a,b)=>a.path.localeCompare(b.path, undefined, {numeric:true}));
+}
+const planUrl = p => `${CONFIG.folder}/` + p.path.split("/").map(encodeURIComponent).join("/") + (p.sha ? "?v="+p.sha.slice(0,12) : "");
+async function isCached(p){ try{ if(!window.caches) return false; const c = await caches.open("pm-plans"); return !!(await c.match(new URL(planUrl(p), location.href).href)); }catch(e){ return false; } }
+const mb = n => n ? (n/1048576).toFixed(n<1048576?2:1)+" MB" : "";
+async function plansDialog(force){
+  const s = modal(`<h3>Job plans</h3>
+    <input class="search" id="p_q" type="search" placeholder="Search job or sheet" autocomplete="off">
+    <div class="plist" id="p_list"><p class="empty">Loading plans…</p></div>
+    <div class="actions"><button class="btn" id="p_ref">Refresh list</button><div class="right"><button class="btn" id="p_close">Close</button></div></div>`);
+  $("p_close").onclick = closeModal; $("p_ref").onclick = ()=>plansDialog(true);
+  let items;
+  try{ items = await listPlans(force); }
+  catch(e){
+    const msg = e.message==="offline" ? "No signal, and this tablet hasn't loaded the plan list before. Open Job plans once with a connection."
+      : e.message==="rate" ? "GitHub is limiting requests from this network. Wait a few minutes and tap Refresh list."
+      : e.message==="config" ? "This page isn't running on GitHub Pages, so it can't find the plans folder. Set owner and repo in CONFIG at the top of the file."
+      : "The plans folder couldn't be read. Check that the repo is public and has a plans folder.";
+    if($("p_list")) $("p_list").innerHTML = `<p class="empty">${msg}</p>`; return;
+  }
+  const draw = ()=>{
+    const list = $("p_list"); if(!list) return;
+    const q = $("p_q").value.trim().toLowerCase();
+    const hits = items.filter(p=>!q || p.path.toLowerCase().includes(q));
+    if(!items.length){ list.innerHTML = `<p class="empty">No PDFs in the plans folder yet. Add them in folders by job, for example <b>plans/24-1031 Taft Ave/C-2.pdf</b>.</p>`; return; }
+    if(!hits.length){ list.innerHTML = `<p class="empty">No plans match “${esc(q)}”.</p>`; return; }
+    let html = planOffline ? `<p class="note" style="padding:4px 6px">No signal. Showing the last plan list; sheets marked <b>Offline</b> will open.</p>` : "", last = null;
+    hits.forEach(p=>{
+      const i = p.path.lastIndexOf("/"), jobDir = i>=0 ? p.path.slice(0,i) : "Unfiled", file = p.path.slice(i+1).replace(/\.pdf$/i,"");
+      if(jobDir!==last){ html += `<div class="pjob"><span>${esc(jobDir)}</span>${planOffline?"":`<button class="savejob" data-j="${esc(jobDir)}">Save job offline</button>`}</div>`; last = jobDir; }
+      const n = (store["plans/"+p.path]||[]).length;
+      html += `<button class="pitem${planName==="plans/"+p.path?" cur":""}" data-p="${esc(p.path)}"><b>${esc(file)}</b><span><i class="off" hidden>Offline · </i>${n?n+" pts · ":""}${mb(p.size)}</span></button>`;
+    });
+    list.innerHTML = html;
+    const byPath = Object.fromEntries(items.map(p=>[p.path,p]));
+    list.querySelectorAll(".pitem").forEach(b=>{ const p = byPath[b.dataset.p]; b.onclick = ()=>openRepoPlan(p, b);
+      isCached(p).then(ok=>{ if(ok){ const i=b.querySelector(".off"); if(i) i.hidden=false; } }); });
+    list.querySelectorAll(".savejob").forEach(b=>b.onclick = async ()=>{
+      const job = b.dataset.j, sheets = items.filter(p=>(p.path.lastIndexOf("/")>=0 ? p.path.slice(0,p.path.lastIndexOf("/")) : "Unfiled")===job);
+      b.disabled = true; let done = 0, failed = 0;
+      for(const p of sheets){ b.textContent = `Saving ${done+1} of ${sheets.length}…`;
+        try{ const r = await fetch(planUrl(p)); if(!r.ok) throw 0; await r.arrayBuffer(); }catch(e){ failed++; } done++; }
+      b.textContent = failed ? `${failed} didn't save. Tap to retry` : "Saved for offline"; b.disabled = !failed; if(!failed) draw(); });
+  };
+  $("p_q").addEventListener("input", draw); draw();
+}
+async function openRepoPlan(p, btn){
+  const path = p.path;
+  if(btn){ btn.disabled = true; btn.querySelector("span").textContent = "Loading…"; }
+  try{
+    const r = await fetch(planUrl(p)); if(!r.ok) throw new Error(r.status);
+    const bytes = new Uint8Array(await r.arrayBuffer());
+    closeModal(); await switchPlan("plans/"+path, bytes);
+  }catch(e){ toast(navigator.onLine===false ? "No signal, and this sheet isn't saved on the tablet yet." : "That plan couldn't be downloaded. Check the connection and try again."); if(btn){ btn.disabled=false; btn.querySelector("span").textContent=""; } }
+}
+$("plansBtn").onclick = ()=>plansDialog(false);
+
+/* ---------- boot ---------- */
+async function boot(){
+  loadLocal(); updateJobline();
+  if(!window.pdfjsLib || !window.PDFLib){ $("stage").innerHTML = `<p class="empty">The PDF tools didn't load. Check the connection and reload.</p>`; return; }
+  const stored = await idbGet("plan");
+  if(stored && stored.bytes){ try{ planBytes = new Uint8Array(stored.bytes); planName = stored.name; await openPdf(planBytes); refresh(); return; }catch(e){} }
+  planBytes = await samplePlan(); planName = "Sample plan";
+  points = examplePoints();
+  await openPdf(planBytes); refresh();
+}
+boot();
+if("serviceWorker" in navigator && location.protocol==="https:"){ navigator.serviceWorker.register("sw.js").catch(()=>{}); }
+})();
+</script>
+
+</body>
+</html>
