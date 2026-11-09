@@ -90,6 +90,8 @@ button{cursor:pointer}
 .tools{display:flex;gap:8px;align-items:center;flex-wrap:wrap;background:var(--panel);border-top:1px solid var(--line);
   padding-block:10px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
 .tools .grow{flex:1}
+.sep{width:1px;align-self:stretch;background:var(--line);margin:4px 2px}
+@media (max-width:640px){.sep{display:none}#resetViewBtn{display:none}}
 .pg{font-family:var(--mono);font-size:13px;color:var(--muted);min-width:56px;text-align:center}
 .listbtn{display:none}
 .scrim{position:fixed;inset:0;background:rgba(10,14,18,.45);z-index:20;display:flex;align-items:flex-end;justify-content:center}
@@ -141,6 +143,12 @@ input[type=file]{display:none}
   <button class="btn icon" id="zoutBtn" aria-label="Zoom out">−</button>
   <button class="btn icon" id="zinBtn" aria-label="Zoom in">+</button>
   <button class="btn" id="fitBtn">Fit</button>
+  <span class="sep" aria-hidden="true"></span>
+  <button class="btn icon" id="rotLBtn" aria-label="Rotate left" title="Rotate left">⟲</button>
+  <button class="btn icon" id="rotRBtn" aria-label="Rotate right" title="Rotate right">⟳</button>
+  <button class="btn icon" id="flipHBtn" aria-label="Flip left to right" title="Flip left to right" aria-pressed="false">⇆</button>
+  <button class="btn icon" id="flipVBtn" aria-label="Flip top to bottom" title="Flip top to bottom" aria-pressed="false">⇅</button>
+  <button class="btn" id="resetViewBtn" title="Undo rotation and flips">Reset view</button>
   <span class="grow"></span>
   <button class="btn listbtn" id="listBtn">Points <b id="cnt">0</b></button>
   <button class="btn" id="exportBtn"><span aria-hidden="true">⇩</span><span class="lbl">Export</span></button>
@@ -175,16 +183,19 @@ let planName = "";
 let planBytes = null;
 let pdf = null, pageNum = 1, zoom = 1, viewport = null, renderTask = null;
 let adding = false, selId = null, lastType = TYPES[0].v;
+const VIEW0 = {rot:0, fh:false, fv:false};
+let view = {...VIEW0}, views = {};
+const flipPt = (x,y) => [view.fh ? viewport.width - x : x, view.fv ? viewport.height - y : y];
 
 /* ---------- storage (per device) ---------- */
 const LS = "plan-markup-v1";
 let store = {};
-function saveLocal(){ try{ if(planName) store[planName] = points.filter(p=>!p.example); localStorage.setItem(LS, JSON.stringify({job, store, planName, lastType})); }catch(e){} }
+function saveLocal(){ try{ if(planName){ store[planName] = points.filter(p=>!p.example); views[planName] = view; } localStorage.setItem(LS, JSON.stringify({job, store, views, planName, lastType})); }catch(e){} }
 function loadLocal(){ try{ const s = JSON.parse(localStorage.getItem(LS)||"null"); if(s){ job = {...job, ...s.job}; planName = s.planName||""; lastType = s.lastType||lastType;
-  store = s.store || (s.points ? {[planName]: s.points} : {}); points = (store[planName]||[]).slice(); } }catch(e){} }
+  store = s.store || (s.points ? {[planName]: s.points} : {}); points = (store[planName]||[]).slice(); views = s.views||{}; view = {...VIEW0, ...(views[planName]||{})}; } }catch(e){} }
 async function switchPlan(name, bytes){
   saveLocal();
-  pageNum = 1; await openPdf(bytes);
+  pageNum = 1; view = {...VIEW0, ...(views[name]||{})}; await openPdf(bytes);
   planBytes = bytes; planName = name; points = (store[name]||[]).slice(); selId = null;
   await idbSet("plan",{name, bytes});
   refresh();
@@ -219,16 +230,19 @@ async function openPdf(bytes){
 async function render(){
   if(!pdf) return;
   const page = await pdf.getPage(pageNum);
-  const base = page.getViewport({scale:1});
+  const rot = ((page.rotate||0) + view.rot) % 360;
+  const base = page.getViewport({scale:1, rotation:rot});
   const avail = Math.max(200, $("viewer").clientWidth - 32);
   const fit = avail / base.width;
-  viewport = page.getViewport({scale: fit*zoom});
+  viewport = page.getViewport({scale: fit*zoom, rotation:rot});
   const cv = $("cv");
   let dpr = window.devicePixelRatio||1;
   const maxPx = 14e6;
   if(viewport.width*viewport.height*dpr*dpr > maxPx) dpr = Math.sqrt(maxPx/(viewport.width*viewport.height));
   cv.width = Math.floor(viewport.width*dpr); cv.height = Math.floor(viewport.height*dpr);
   cv.style.width = viewport.width+"px"; cv.style.height = viewport.height+"px";
+  cv.style.transform = (view.fh||view.fv) ? `scale(${view.fh?-1:1},${view.fv?-1:1})` : "";
+  $("flipHBtn").setAttribute("aria-pressed", view.fh); $("flipVBtn").setAttribute("aria-pressed", view.fv);
   $("stage").style.width = viewport.width+"px";
   if(renderTask){ try{ renderTask.cancel(); }catch(e){} }
   renderTask = page.render({canvasContext: cv.getContext("2d"), viewport, transform: dpr!==1?[dpr,0,0,dpr,0,0]:null});
@@ -241,7 +255,7 @@ function drawMarkers(){
   const ov = $("overlay"); ov.innerHTML = "";
   if(!viewport) return;
   points.filter(p=>p.page===pageNum).forEach(p=>{
-    const [x,y] = viewport.convertToViewportPoint(p.px,p.py);
+    const [x,y] = flipPt(...viewport.convertToViewportPoint(p.px,p.py));
     const b = document.createElement("button");
     b.className = `mk ${status(p)}${p.id===selId?" sel":""}${p.example?" example":""}`;
     b.style.left = x+"px"; b.style.top = y+"px"; b.textContent = p.n;
@@ -277,7 +291,7 @@ $("addBtn").onclick = ()=> setAdding(!adding);
 $("overlay").addEventListener("click", e=>{
   if(!adding || !viewport) return;
   const r = $("overlay").getBoundingClientRect();
-  const [px,py] = viewport.convertToPdfPoint(e.clientX-r.left, e.clientY-r.top);
+  const [px,py] = viewport.convertToPdfPoint(...flipPt(e.clientX-r.left, e.clientY-r.top));
   const p = {id: Date.now().toString(36)+Math.random().toString(36).slice(2,6), n: nextN(), page: pageNum, px, py,
     type: lastType, loc:"", elev:"", result:"", spec: typeOf(lastType).res?"90":"", notes:"", time: new Date().toISOString()};
   points.push(p); selId = p.id; refresh(); edit(p.id, true);
@@ -287,6 +301,12 @@ $("nextBtn").onclick = async()=>{ if(pdf && pageNum<pdf.numPages){ pageNum++; aw
 $("zinBtn").onclick = ()=>{ zoom=Math.min(zoom*1.4, 8); render(); };
 $("zoutBtn").onclick = ()=>{ zoom=Math.max(zoom/1.4, 0.4); render(); };
 $("fitBtn").onclick = ()=>{ zoom=1; render(); };
+function setView(v){ view = {...view, ...v}; saveLocal(); render(); }
+$("rotLBtn").onclick = ()=> setView({rot:(view.rot+270)%360});
+$("rotRBtn").onclick = ()=> setView({rot:(view.rot+90)%360});
+$("flipHBtn").onclick = ()=> setView({fh:!view.fh});
+$("flipVBtn").onclick = ()=> setView({fv:!view.fv});
+$("resetViewBtn").onclick = ()=>{ view = {...VIEW0}; saveLocal(); render(); };
 let rz; addEventListener("resize", ()=>{ clearTimeout(rz); rz=setTimeout(render,200); });
 
 function modal(html){ const root=$("modalRoot"); root.innerHTML = `<div class="scrim"><div class="sheet" role="dialog" aria-modal="true">${html}</div></div>`;
